@@ -2620,7 +2620,7 @@ void _read_images(header_info **hList, uint32_t hCount, int totalClasses, int un
         for (i = 0; i < count; i++) {
             category_t *cat = catlist[i];
             Class cls = remapClass(cat->cls);
-
+            
             if (!cls) {
                 catlist[i] = nil;
                 if (PrintConnecting) {
@@ -4505,6 +4505,8 @@ static method_t *findMethodInSortedMethodList(SEL key, const method_list_t *list
 * fixme
 * Locking: runtimeLock must be read- or write-locked by the caller
 **********************************************************************/
+
+// 根据传入的SEL，查找对应的method_t结构体
 static method_t *search_method_list(const method_list_t *mlist, SEL sel)
 {
     int methodListIsFixedUp = mlist->isFixedUp();
@@ -4515,6 +4517,7 @@ static method_t *search_method_list(const method_list_t *mlist, SEL sel)
     } else {
         // Linear search of unsorted method list
         for (auto& meth : *mlist) {
+            // SEL本质上就是字符串，查找的过程就是进行字符串对比
             if (meth.name == sel) return &meth;
         }
     }
@@ -4705,6 +4708,7 @@ IMP lookUpImpOrForward(Class cls, SEL sel, id inst,
         runtimeLock.read();
     }
 
+    // 第一次调用当前类的话，执行initialize的代码
     if (initialize  &&  !cls->isInitialized()) {
         runtimeLock.unlockRead();
         _class_initialize (_class_getNonMetaClass(cls, inst));
@@ -4893,6 +4897,8 @@ Class gdb_object_getClass(id obj)
 /***********************************************************************
 * Locking: write-locks runtimeLock
 **********************************************************************/
+// 初始化类和元类的代码
+// 函数内部主要是查找当前类和元类中是否定义了某些方法，然后根据查找结果设置类和元类的一些标志位
 void 
 objc_class::setInitialized()
 {
@@ -4901,6 +4907,7 @@ objc_class::setInitialized()
 
     assert(!isMetaClass());
 
+    // 获取类和元类对象
     cls = (Class)this;
     metacls = cls->ISA();
 
@@ -4926,6 +4933,7 @@ objc_class::setInitialized()
     }
     else if (metacls == classNSObject()->ISA()) {
         // NSObject's metaclass AWZ is default, but we still need to check cats
+        // 查找是否实现了alloc和allocWithZone方法
         auto& methods = metacls->data()->methods;
         for (auto mlists = methods.beginCategoryMethodLists(), 
                   end = methods.endCategoryMethodLists(metacls); 
@@ -4971,6 +4979,7 @@ objc_class::setInitialized()
         clsCustomRR = YES;
         inherited = NO;
     }
+    // 查找元类是否实现MRC方法，如果是则进入if语句中
     if (cls == classNSObject()) {
         // NSObject's RR is default, but we still need to check categories
         auto& methods = cls->data()->methods;
@@ -4998,6 +5007,7 @@ objc_class::setInitialized()
     } 
     else {
         // Not class NSObject.
+        // 查找类是否实现MRC方法，如果是则进入if语句中
         auto& methods = cls->data()->methods;
         for (auto mlists = methods.beginLists(), 
                   end = methods.endLists(); 
