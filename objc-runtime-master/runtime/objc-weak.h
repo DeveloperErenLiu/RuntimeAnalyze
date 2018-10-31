@@ -79,6 +79,7 @@ typedef DisguisedPtr<objc_object *> weak_referrer_t;
 
 struct weak_entry_t {
     DisguisedPtr<objc_object> referent;
+    // C++联合体
     union {
         struct {
             weak_referrer_t *referrers;

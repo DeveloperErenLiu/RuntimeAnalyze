@@ -167,6 +167,7 @@ static void append_referrer(weak_entry_t *entry, objc_object **new_referrer)
  */
 static void remove_referrer(weak_entry_t *entry, objc_object **old_referrer)
 {
+    // 先查找entry的inline_referrers字段，从数组中遍历查找当前弱引用指针，并将其置nil
     if (! entry->out_of_line()) {
         for (size_t i = 0; i < WEAK_INLINE_COUNT; i++) {
             if (entry->inline_referrers[i] == old_referrer) {
@@ -183,6 +184,7 @@ static void remove_referrer(weak_entry_t *entry, objc_object **old_referrer)
         return;
     }
 
+    // 如果查找inline_referrers没找到，则查找referrers字段，并将传入的指针置nil
     size_t begin = w_hash_pointer(old_referrer) & (entry->mask);
     size_t index = begin;
     size_t hash_displacement = 0;
@@ -344,6 +346,8 @@ weak_entry_for_referent(weak_table_t *weak_table, objc_object *referent)
  * @param referent The object.
  * @param referrer The weak reference.
  */
+
+// 从weakTable中移除weak指针
 void
 weak_unregister_no_lock(weak_table_t *weak_table, id referent_id, 
                         id *referrer_id)
@@ -355,7 +359,9 @@ weak_unregister_no_lock(weak_table_t *weak_table, id referent_id,
 
     if (!referent) return;
 
+    // 从weak_table中查找被弱引用的对象，以weak_entry_t的形式获取
     if ((entry = weak_entry_for_referent(weak_table, referent))) {
+        // 移除弱引用指针操作
         remove_referrer(entry, referrer);
         bool empty = true;
         if (entry->out_of_line()  &&  entry->num_refs != 0) {
@@ -370,6 +376,7 @@ weak_unregister_no_lock(weak_table_t *weak_table, id referent_id,
             }
         }
 
+        // 如果被指向的对象，所有弱引用指针都没有了，则将对象从weak_table的哈希表中移除。函数内部都是一些释放操作
         if (empty) {
             weak_entry_remove(weak_table, entry);
         }
@@ -391,12 +398,15 @@ id
 weak_register_no_lock(weak_table_t *weak_table, id referent_id, 
                       id *referrer_id, bool crashIfDeallocating)
 {
+    // 被引用的对象
     objc_object *referent = (objc_object *)referent_id;
+    // 弱引用的指针
     objc_object **referrer = (objc_object **)referrer_id;
-
+    
     if (!referent  ||  referent->isTaggedPointer()) return referent_id;
-
+    
     // ensure that the referenced object is viable
+    // 判断是否可以使用weak
     bool deallocating;
     if (!referent->ISA()->hasCustomRR()) {
         deallocating = referent->rootIsDeallocating();
@@ -425,11 +435,14 @@ weak_register_no_lock(weak_table_t *weak_table, id referent_id,
     }
 
     // now remember it and where it is being stored
+    // 以(对象的指针，指向weak的指针)这种结构插入到weakTable中
+    // 对象第一次有Weak指针指向时，会调用weak_entry_insert将weak_entry_t插入到哈希表中，后面的Weak指向都会调用append_referrer向表中添加referrer
     weak_entry_t *entry;
     if ((entry = weak_entry_for_referent(weak_table, referent))) {
         append_referrer(entry, referrer);
     } 
     else {
+        // 根据传入的对象和weak指针，创建weak_entry_t对象，并将其插入到weak_table中
         weak_entry_t new_entry(referent, referrer);
         weak_grow_maybe(weak_table);
         weak_entry_insert(weak_table, &new_entry);
